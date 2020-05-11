@@ -1,30 +1,35 @@
-const renderElem = ({ tagName, props, children}) => {
-  // create the element
-  //   e.g. <div></div>
-  const $el = document.createElement(tagName);
+const renderElement = ({ tagName, props, children }) => {
+  const $element = document.createElement(tagName);
 
-  // add all attributs as specified in vNode.props
-  //   e.g. <div id="app"></div>
-  for (const [k, v] of Object.entries(props)) {
-    $el.setAttribute(k, v);
-  }
+  const $elementWithProps = Object.keys(props).reduce(
+    ($el, prop) => {
+      $el.setAttribute(prop, props[prop]);
 
-  // append all children as specified in vNode.children
-  //   e.g. <div id="app"><img></div>
-  for (const child of children) {
-    $el.appendChild(render(child));
-  }
+      return $el;
+    },
+    $element,
+  );
 
-  return $el;
+  const $elementWithChildren = children.reduce(
+    ($el, child) => {
+      $el.appendChild(render(child));
+
+      return $el;
+    },
+    $elementWithProps,
+  );
+
+  return $elementWithChildren;
 };
 
 const render = (vNode) => {
-  if (typeof vNode === 'string') {
-    return document.createTextNode(vNode);
-  }
+  let $node;
 
-  // we assume everything else to be a virtual element
-  return renderElem(vNode);
+  typeof vNode === 'string'
+    ? $node = document.createTextNode(vNode)
+    : $node = renderElement(vNode);
+
+  return $node;
 };
 
 export default render;
