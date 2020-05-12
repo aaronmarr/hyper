@@ -8,33 +8,36 @@ const zip = (xs, ys) => {
   return zipped;
 };
 
-const diffAttrs = (oldAttrs, newAttrs) => {
-  const patches = [];
+const diffProps = (prevProps, nextProps) => {
+  const patchesToApply = [
+    ...Object.keys(nextProps).reduce((patches, key) => {
+      patches.push(($node) => {
+        $node.setAttribute(key, nextProps[key]);
 
-  // setting newAttrs
-  for (const [k, v] of Object.entries(newAttrs)) {
-    patches.push($node => {
-      $node.setAttribute(k, v);
-      return $node;
-    });
-  }
-
-  // removing attrs
-  for (const k in oldAttrs) {
-    if (!(k in newAttrs)) {
-      patches.push($node => {
-        $node.removeAttribute(k);
         return $node;
       });
-    }
-  }
 
-  return $node => {
-    for (const patch of patches) {
-      patch($node);
-    }
-    return $node;
-  };
+      return patches;
+    }, []),
+
+    ...Object.keys(prevProps).reduce((patches, key) => {
+      if (!key in nextProps) {
+        patches.push(($node) => {
+          $node.removeAttribute(key);
+
+          return $node;
+        });
+      }
+
+      return patches;
+    }, []),
+  ];
+
+  return ($node) => patchesToApply.reduce(($node, patch) => {
+    const $patched = patch($node);
+
+    return $patched;
+  }, $node);
 };
 
 const diffChildren = (oldVChildren, newVChildren) => {
@@ -108,7 +111,7 @@ const diff = (oldVTree, newVTree) => {
     };
   }
 
-  const patchProps = diffAttrs(oldVTree.props, newVTree.props);
+  const patchProps = diffProps(oldVTree.props, newVTree.props);
   const patchChildren = diffChildren(oldVTree.children, newVTree.children);
 
   return $node => {
