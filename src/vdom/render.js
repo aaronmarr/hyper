@@ -1,25 +1,29 @@
+const createDomNode = (tagName) => document.createElement(tagName);
+
+const addPropsToNode = (props, $node) => Object.keys(props).reduce(
+  ($el, prop) => {
+    $el.setAttribute(prop, props[prop]);
+
+    return $el;
+  },
+  $node,
+);
+
+const addChildrenToNode = (children, $node) => children.reduce(
+  ($domNode, child) => {
+    $domNode.appendChild(render(child));
+
+    return $domNode;
+  },
+  $node,
+);
+
 const renderElement = ({ tagName, props, children }) => {
-  const $element = document.createElement(tagName);
+  const $node = createDomNode(tagName);
+  const $nodeWithProps = addPropsToNode(props, $node);
+  const $nodeWithPropsAndChildren = addChildrenToNode(children, $nodeWithProps);
 
-  const $elementWithProps = Object.keys(props).reduce(
-    ($el, prop) => {
-      $el.setAttribute(prop, props[prop]);
-
-      return $el;
-    },
-    $element,
-  );
-
-  const $elementWithChildren = children.reduce(
-    ($el, child) => {
-      $el.appendChild(render(child));
-
-      return $el;
-    },
-    $elementWithProps,
-  );
-
-  return $elementWithChildren;
+  return $nodeWithPropsAndChildren;
 };
 
 const render = (vNode) => {

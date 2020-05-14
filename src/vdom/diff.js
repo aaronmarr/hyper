@@ -2,51 +2,66 @@ import render from './render';
 
 const zip = (xs, ys) => {
   const zipped = [];
+
   for (let i = 0; i < Math.min(xs.length, ys.length); i++) {
     zipped.push([xs[i], ys[i]]);
   }
+
   return zipped;
 };
 
-const diffProps = (prevProps, nextProps) => {
-  const patchesToApply = [
-    ...Object.keys(nextProps).reduce((patches, key) => {
-      patches.push(($node) => {
-        $node.setAttribute(key, nextProps[key]);
+const getPropSetters = (nextProps) => Object.keys(nextProps).reduce(
+  (setters, prop) => {
+    setters.push(($node) => {
+      $node.setAttribute(prop, nextProps[prop]);
+
+      return $node;
+    });
+
+    return setters;
+  }, [],
+);
+
+const getPropRemovers = (nextProps, prevProps) => Object.keys(prevProps).reduce(
+  (removers, prop) => {
+    if (!prop in nextProps) {
+      removers.push(($node) => {
+        $node.removeAttribute(prop);
 
         return $node;
       });
+    }
 
-      return patches;
-    }, []),
+    return removers;
+  }, [],
+);
 
-    ...Object.keys(prevProps).reduce((patches, key) => {
-      if (!key in nextProps) {
-        patches.push(($node) => {
-          $node.removeAttribute(key);
-
-          return $node;
-        });
-      }
-
-      return patches;
-    }, []),
+const diffProps = (prevProps, nextProps) => {
+  const patches = [
+    ...getPropSetters(nextProps),
+    ...getPropRemovers(nextProps, prevProps),
   ];
 
-  return ($node) => patchesToApply.reduce(($node, patch) => {
+  return ($node) => patches.reduce(($node, patch) => {
     const $patched = patch($node);
 
     return $patched;
   }, $node);
 };
 
+const getChildPatches = (oldChildren, newChildren) => oldChildren.reduce(
+  (patches, oldChild, i) => {
+    patches.push(diff(oldChild, newChildren[i]));
+
+    return patches;
+  }, [],
+);
+
 const diffChildren = (oldVChildren, newVChildren) => {
-  const childPatches = [];
-  oldVChildren.forEach((oldVChild, i) => {
-    childPatches.push(diff(oldVChild, newVChildren[i]));
-  });
+  const childPatches = getChildPatches(oldVChildren, newVChildren);
 
   const additionalPatches = [];
+
   for (const additionalVChild of newVChildren.slice(oldVChildren.length)) {
     additionalPatches.push($node => {
       $node.appendChild(render(additionalVChild));
