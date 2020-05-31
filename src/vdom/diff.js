@@ -1,5 +1,7 @@
+import { pipe, partial } from '../utils';
 import render from './render';
 
+// TODO fix thsi now! Move to util
 const zip = (xs, ys) => {
   const zipped = [];
 
@@ -10,36 +12,41 @@ const zip = (xs, ys) => {
   return zipped;
 };
 
+const setAttribute = (prop, propValue, $node) => {
+  $node.setAttribute(prop, propValue);
+
+  return $node;
+}
+
 const getPropSetters = (nextProps) => Object.keys(nextProps).reduce(
-  (setters, prop) => {
-    setters.push(($node) => {
-      $node.setAttribute(prop, nextProps[prop]);
+  (patches, prop) => {
+    patches.push(partial(setAttribute, prop, nextProps[prop]));
 
-      return $node;
-    });
-
-    return setters;
+    return patches;
   }, [],
 );
 
-const getPropRemovers = (nextProps, prevProps) => Object.keys(prevProps).reduce(
-  (removers, prop) => {
-    if (!prop in nextProps) {
-      removers.push(($node) => {
-        $node.removeAttribute(prop);
+const unsetAttribute = (prop, $node) => {
+  $node.removeAttribute(prop);
 
-        return $node;
-      });
-    }
+  return $node;
+};
 
-    return removers;
-  }, [],
-);
+const getPropUnsetters = (nextProps, prevProps) => 
+  Object.keys(prevProps).reduce(
+    (patches, prop) => {
+      if (!prop in nextProps) {
+        patches.push(partial(unsetAttribute, prop));
+      }
+
+      return patches;
+    }, [],
+  );
 
 const diffProps = (prevProps, nextProps) => {
   const patches = [
     ...getPropSetters(nextProps),
-    ...getPropRemovers(nextProps, prevProps),
+    ...getPropUnsetters(nextProps, prevProps),
   ];
 
   return ($node) => patches.reduce(($node, patch) => {

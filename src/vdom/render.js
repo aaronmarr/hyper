@@ -1,39 +1,36 @@
-const createDomNode = (tagName) => document.createElement(tagName);
+import { pipe, partial } from '../utils';
 
-const addPropsToNode = (props, $node) => Object.keys(props).reduce(
-  ($el, prop) => {
-    $el.setAttribute(prop, props[prop]);
+const createNode = (tagName) =>
+  document.createElement(tagName)
 
-    return $el;
-  },
-  $node,
-);
+const setAttribute = (props, $el, prop) => {
+  $el.setAttribute(prop, props[prop])
 
-const addChildrenToNode = (children, $node) => children.reduce(
-  ($domNode, child) => {
-    $domNode.appendChild(render(child));
+  return $el
+}
 
-    return $domNode;
-  },
-  $node,
-);
+const addPropsToNode = (props, $node) =>
+  Object.keys(props).reduce(partial(setAttribute, props), $node)
 
-const renderElement = ({ tagName, props, children }) => {
-  const $node = createDomNode(tagName);
-  const $nodeWithProps = addPropsToNode(props, $node);
-  const $nodeWithPropsAndChildren = addChildrenToNode(children, $nodeWithProps);
+const appendChild = ($domNode, child) => {
+  $domNode.appendChild(render(child))
 
-  return $nodeWithPropsAndChildren;
-};
+  return $domNode
+}
 
-const render = (vNode) => {
-  let $node;
+const appendChildrenToNode = (children, $node) =>
+  children.reduce(appendChild, $node)
 
+const renderElement = ({ tagName, props, children }) =>
+  pipe(
+    createNode,
+    partial(addPropsToNode, props),
+    partial(appendChildrenToNode, children)
+  )(tagName)
+
+const render = (vNode) =>
   typeof vNode === 'string'
-    ? $node = document.createTextNode(vNode)
-    : $node = renderElement(vNode);
+    ? document.createTextNode(vNode)
+    : renderElement(vNode)
 
-  return $node;
-};
-
-export default render;
+export default render
