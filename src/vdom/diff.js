@@ -1,30 +1,25 @@
 import { pipe, partial } from '../utils';
 import render from './render';
 
-// TODO fix thsi now! Move to util
-const zip = (xs, ys) => {
-  const zipped = [];
-
-  for (let i = 0; i < Math.min(xs.length, ys.length); i++) {
-    zipped.push([xs[i], ys[i]]);
-  }
-
-  return zipped;
-};
-
 const setAttribute = (prop, propValue, $node) => {
   $node.setAttribute(prop, propValue);
 
   return $node;
 }
 
-const getPropSetters = (nextProps) => Object.keys(nextProps).reduce(
-  (patches, prop) => {
-    patches.push(partial(setAttribute, prop, nextProps[prop]));
+const getSetters = (nextProps, setters, prop) => {
+  setters.push(
+    partial(setAttribute, prop, nextProps[prop]),
+  );
 
-    return patches;
-  }, [],
-);
+  return setters;
+}
+
+const getPropSetters = (nextProps) =>
+  Object.keys(nextProps).reduce(
+    partial(getSetters, nextProps),
+    [],
+  );
 
 const unsetAttribute = (prop, $node) => {
   $node.removeAttribute(prop);
@@ -32,16 +27,29 @@ const unsetAttribute = (prop, $node) => {
   return $node;
 };
 
+const getUnsetters = (nextProps, patches, prop) => {
+  if (!prop in nextProps) {
+    patches.push(
+      partial(unsetAttribute, prop)
+    );
+  }
+
+  return patches;
+}
+
 const getPropUnsetters = (nextProps, prevProps) => 
   Object.keys(prevProps).reduce(
-    (patches, prop) => {
-      if (!prop in nextProps) {
-        patches.push(partial(unsetAttribute, prop));
-      }
-
-      return patches;
-    }, [],
+    partial(getUnsetters, nextProps),
+    [],
   );
+
+const patchProps = (patches, $node) =>
+  patches.reduce(($node, patch) => {
+    const $patched = patch($node);
+
+    return $patched;
+  },
+  $node);
 
 const diffProps = (prevProps, nextProps) => {
   const patches = [
@@ -49,98 +57,136 @@ const diffProps = (prevProps, nextProps) => {
     ...getPropUnsetters(nextProps, prevProps),
   ];
 
-  return ($node) => patches.reduce(($node, patch) => {
-    const $patched = patch($node);
-
-    return $patched;
-  }, $node);
+  return partial(patchProps, patches);
 };
 
-const getChildPatches = (oldChildren, newChildren) => oldChildren.reduce(
-  (patches, oldChild, i) => {
-    patches.push(diff(oldChild, newChildren[i]));
+const getPatches = (newChildren, patches, oldChild, i) => {
+  patches.push(diff(oldChild, newChildren[i]));
 
-    return patches;
-  }, [],
-);
+  return patches;
+}
+
+const getChildPatches = (oldChildren, newChildren) =>
+  oldChildren.reduce(
+    partial(getPatches, newChildren),
+    [],
+  );
+
+const zip = (childPatches, childNodes) =>
+  childPatches.reduce((zipped, patch, index) => {
+    zipped.push([patch, childNodes[index]]);
+
+    return zipped;
+  }, []);
+
+const updateDom = (childPatches, additionalPatches, $parent) => {
+  const patches = zip(childPatches, $parent.childNodes);
+
+  patches.map(([patch, $child]) => patch($child));
+  additionalPatches.map(patch => patch($parent));
+
+  return $parent;
+}
+
+const appendChild = (newChild, $node) => {
+  $node.appendChild(render(newChild));
+
+  return $node;
+}
+
+const getAddition = (patches, newChild) => {
+  patches.push(partial(appendChild, newChild));
+
+  return patches;
+}
+
+const getAdditionPatches = (oldVChildren, newVChildren) =>
+  newVChildren.slice(oldVChildren.length).reduce(
+    partial(getAddition),
+    [],
+  );
 
 const diffChildren = (oldVChildren, newVChildren) => {
-  const childPatches = getChildPatches(oldVChildren, newVChildren);
+  const childPatches = getChildPatches(
+    oldVChildren,
+    newVChildren
+  );
 
-  const additionalPatches = [];
+  const additionPatches = getAdditionPatches(
+    oldVChildren,
+    newVChildren,
+  );
 
-  for (const additionalVChild of newVChildren.slice(oldVChildren.length)) {
-    additionalPatches.push($node => {
-      $node.appendChild(render(additionalVChild));
-      return $node;
-    });
-  }
-
-  return $parent => {
-    // since childPatches are expecting the $child, not $parent,
-    // we cannot just loop through them and call patch($parent)
-    for (const [patch, $child] of zip(childPatches, $parent.childNodes)) {
-      patch($child);
-    }
-
-    for (const patch of additionalPatches) {
-      patch($parent);
-    }
-    return $parent;
-  };
+  return partial(updateDom, childPatches, additionPatches);
 };
 
+const removeNode = ($node) => {
+  $node.remove();
+
+  return undefined;
+}
+
+const replaceNode = (newVTree, $node) => {
+  const $newNode = render(newVTree);
+
+  $node.replaceWith($newNode);
+
+  return $newNode;
+}
+
+const passThrough = ($node) => $node;
+
+const patchNode = (oldVTree, newVTree, $node) => {
+  const patchProps = diffProps(
+    oldVTree.props,
+    newVTree.props,
+  );
+
+  const patchChildren = diffChildren(
+    oldVTree.children,
+    newVTree.children,
+  );
+
+  return pipe(patchProps, patchChildren)($node);
+}
+
 const diff = (oldVTree, newVTree) => {
-  // let's assume oldVTree is not undefined!
-  if (newVTree === undefined) {
-    return $node => {
-      $node.remove();
-      // the patch should return the new root node.
-      // since there is none in this case,
-      // we will just return undefined.
-      return undefined;
-    }
+  let patch;
+
+  if (
+    !patch
+    && typeof newVTree === 'undefined'
+  ) {
+    patch = removeNode;
   }
 
-  if (typeof oldVTree === 'string' ||
-    typeof newVTree === 'string') {
+  if (
+    !patch
+    && (
+      typeof oldVTree === 'string'
+      || typeof newVTree === 'string'
+    )
+  ) {
     if (oldVTree !== newVTree) {
-      // could be 2 cases:
-      // 1. both trees are string and they have different values
-      // 2. one of the trees is text node and
-      //    the other one is elem node
-      // Either case, we will just render(newVTree)!
-      return $node => {
-         const $newNode = render(newVTree);
-         $node.replaceWith($newNode);
-         return $newNode;
-       };
+      patch = partial(replaceNode, newVTree);
     } else {
-      // this means that both trees are string
-      // and they have the same values
-      return $node => $node;
+      patch = passThrough;
     }
   }
 
-  if (oldVTree.tagName !== newVTree.tagName) {
-    // we assume that they are totally different and 
-    // will not attempt to find the differences.
-    // simply render the newVTree and mount it.
-    return $node => {
-      const $newNode = render(newVTree);
-      $node.replaceWith($newNode);
-      return $newNode;
-    };
+  if (
+    !patch
+    && oldVTree.tagName !== newVTree.tagName
+  ) {
+    patch = partial(replaceNode, newVTree);
   }
 
-  const patchProps = diffProps(oldVTree.props, newVTree.props);
-  const patchChildren = diffChildren(oldVTree.children, newVTree.children);
+  if (!patch) {
+    patch = partial(patchNode, oldVTree, newVTree);
+  }
 
-  return $node => {
-    patchProps($node);
-    patchChildren($node);
-    return $node;
-  };
+  return patch;
 };
 
 export default diff;
+
